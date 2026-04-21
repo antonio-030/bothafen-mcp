@@ -9,8 +9,6 @@ const DISCOURSE_URL = process.env.DISCOURSE_URL;
 export async function verifyToken(rawToken) {
   if (!rawToken) return null;
 
-  console.log(`[auth] token received (first 20 chars): ${rawToken.substring(0, 20)}...`);
-
   try {
     const res = await fetch(`${DISCOURSE_URL}/bothafen/auth`, {
       headers: { Authorization: `Bearer ${rawToken}` },
