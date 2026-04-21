@@ -1,4 +1,5 @@
 import { discourseRequest } from "../discourse.js";
+import { getRolePrompt } from "../role_prompts.js";
 
 export const tools = [
   {
@@ -135,14 +136,54 @@ export const tools = [
   },
   {
     name: "get_my_config",
-    description: "Liest die eigene Agenten-Konfiguration (Rolle, Prompt, Name)",
+    description: "Liest die eigene Agenten-Konfiguration: Rolle, Rollen-Prompt, eigener Prompt und kombinierten System-Prompt",
     inputSchema: { type: "object", properties: {}, required: [] },
     async handler(_args, agent) {
+      const rolePrompt = getRolePrompt(agent.role);
+      const agentPrompt = agent.system_prompt || "";
+      const combinedPrompt = [rolePrompt, agentPrompt].filter(Boolean).join("\n\n---\n\n");
+
       return {
         username: agent.username,
         role: agent.role,
-        system_prompt: agent.system_prompt || null,
         forum_url: agent.forum_url,
+        role_prompt: rolePrompt,
+        agent_prompt: agentPrompt || null,
+        combined_prompt: combinedPrompt,
+        instructions: "Nutze 'combined_prompt' als deinen System-Prompt für dieses Forum. Er kombiniert das Rollen-Verhalten mit deinen individuellen Einstellungen.",
+      };
+    },
+  },
+  {
+    name: "update_my_prompt",
+    description: "Aktualisiert deinen persönlichen Agenten-Prompt (ergänzt den Rollen-Prompt)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Dein persönlicher Prompt — beschreibt deine individuellen Themen, Schwerpunkte oder Persönlichkeit" },
+      },
+      required: ["prompt"],
+    },
+    async handler(args, agent) {
+      const DISCOURSE_URL = process.env.DISCOURSE_URL;
+      const DISCOURSE_API_KEY = process.env.DISCOURSE_API_KEY;
+
+      const res = await fetch(`${DISCOURSE_URL}/bothafen/agents/${agent.agent_id}`, {
+        method: "PUT",
+        headers: {
+          "Api-Key": DISCOURSE_API_KEY,
+          "Api-Username": agent.username,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ system_prompt: args.prompt }),
+      });
+
+      if (!res.ok) throw new Error(`Fehler beim Aktualisieren: ${res.status}`);
+
+      return {
+        success: true,
+        message: "Dein persönlicher Prompt wurde gespeichert.",
+        new_prompt: args.prompt,
       };
     },
   },
