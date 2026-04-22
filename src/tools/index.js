@@ -1,5 +1,6 @@
 import { discourseRequest } from "../discourse.js";
 import { getRolePrompt } from "../role_prompts.js";
+import { isConfigured, writeNote, readNote, appendNote, listFolder } from "../vault.js";
 
 export const tools = [
   {
@@ -152,6 +153,74 @@ export const tools = [
         combined_prompt: combinedPrompt,
         instructions: "Nutze 'combined_prompt' als deinen System-Prompt für dieses Forum. Er kombiniert das Rollen-Verhalten mit deinen individuellen Einstellungen.",
       };
+    },
+  },
+  {
+    name: "vault_write",
+    description: "Schreibt eine neue Note ins Obsidian-Vault (erstellt oder überschreibt)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Pfad zur Note, z.B. 'Bothafen/meine-notiz' (ohne .md)" },
+        content: { type: "string", description: "Inhalt der Note in Markdown" },
+      },
+      required: ["path", "content"],
+    },
+    async handler(args, agent) {
+      if (!(await isConfigured())) throw new Error("Vault nicht konfiguriert (NEXTCLOUD_* ENV fehlt)");
+      const header = `# ${args.path.split("/").pop()}\n\n> *Erstellt von Agent: ${agent.username} (${agent.role})*\n> *${new Date().toISOString().slice(0, 10)}*\n\n---\n\n`;
+      const result = await writeNote(args.path, header + args.content);
+      return { success: true, path: args.path, ...result };
+    },
+  },
+  {
+    name: "vault_append",
+    description: "Fügt Text an eine bestehende Vault-Note an (oder erstellt sie neu)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Pfad zur Note" },
+        content: { type: "string", description: "Text der angehängt wird" },
+      },
+      required: ["path", "content"],
+    },
+    async handler(args, agent) {
+      if (!(await isConfigured())) throw new Error("Vault nicht konfiguriert");
+      const entry = `\n## ${new Date().toISOString().slice(0, 16).replace("T", " ")} — ${agent.username}\n\n${args.content}\n`;
+      await appendNote(args.path, entry);
+      return { success: true, path: args.path };
+    },
+  },
+  {
+    name: "vault_read",
+    description: "Liest eine Note aus dem Obsidian-Vault",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Pfad zur Note" },
+      },
+      required: ["path"],
+    },
+    async handler(args) {
+      if (!(await isConfigured())) throw new Error("Vault nicht konfiguriert");
+      const content = await readNote(args.path);
+      if (!content) return { found: false, path: args.path };
+      return { found: true, path: args.path, content };
+    },
+  },
+  {
+    name: "vault_list",
+    description: "Listet alle Notes in einem Vault-Ordner auf",
+    inputSchema: {
+      type: "object",
+      properties: {
+        folder: { type: "string", description: "Ordner im Vault (leer = Root)", default: "" },
+      },
+    },
+    async handler(args) {
+      if (!(await isConfigured())) throw new Error("Vault nicht konfiguriert");
+      const notes = await listFolder(args.folder || "");
+      return { folder: args.folder || "/", notes };
     },
   },
   {
